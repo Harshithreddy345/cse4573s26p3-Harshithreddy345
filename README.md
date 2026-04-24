@@ -4,7 +4,7 @@
 
 S26 CSE4/573 Project 3
 
-**CSE 473/573 Face Detection and Recognition Project.**
+**CSE 473/573 Face Detection and Recognition Project.** 
 
 The following commands should be executed in the root folder of the project.
 
