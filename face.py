@@ -38,6 +38,15 @@ def detect_faces(img: torch.Tensor) -> List[List[float]]:
     detection_results: List[List[float]] = []
 
     ##### YOUR IMPLEMENTATION STARTS HERE #####
+    img_np = _prepare_image(img)
+    boxes = face_recognition.face_locations(img_np)
+
+    for (top, right, bottom, left) in boxes:
+        x = float(left)
+        y = float(top)
+        w = float(right - left)
+        h = float(bottom - top)
+        detection_results.append([x, y, w, h])
 
     return detection_results
 
@@ -65,7 +74,56 @@ def cluster_faces(imgs: Dict[str, torch.Tensor], K: int) -> List[List[str]]:
     cluster_results: List[List[str]] = [[] for _ in range(K)] # Please make sure your output follows this data format.
         
     ##### YOUR IMPLEMENTATION STARTS HERE #####
-    
+    names = []
+    features = []
+
+    for name, img in imgs.items():
+        img_np = _prepare_image(img)
+
+        encodings = face_recognition.face_encodings(img_np)
+
+        if len(encodings) == 0:
+            continue
+
+        feat = torch.tensor(encodings[0], dtype=torch.float32)
+        names.append(name)
+        features.append(feat)
+
+    if len(features) == 0:
+        return cluster_results
+
+    X = torch.stack(features)
+    N = X.shape[0]
+
+    best_labels = None
+    best_inertia = float('inf')
+
+    for seed in range(15):
+        torch.manual_seed(seed * 7 + 3)
+        perm = torch.randperm(N)
+        centroids = X[perm[:K]].clone()
+
+        prev_labels = torch.full((N,), -1, dtype=torch.long)
+
+        for _ in range(200):
+            dists = torch.cdist(X, centroids)
+            labels = dists.argmin(dim=1)
+            if torch.equal(labels, prev_labels):
+                break
+            prev_labels = labels.clone()
+            for k in range(K):
+                members = X[labels == k]
+                if members.shape[0] > 0:
+                    centroids[k] = members.mean(dim=0)
+
+        inertia = torch.cdist(X, centroids).gather(1, labels.unsqueeze(1)).squeeze().sum().item()
+        if inertia < best_inertia:
+            best_inertia = inertia
+            best_labels = labels.clone()
+
+    for i, name in enumerate(names):
+        cluster_results[int(best_labels[i])].append(name)
+
     return cluster_results
 
 
@@ -75,3 +133,8 @@ But remember the above 2 functions are the only functions that will be called by
 '''
 
 # TODO: Your functions. (if needed)
+
+def _prepare_image(img: torch.Tensor):
+    img = img.permute(1, 2, 0)  # (C, H, W) â†’ (H, W, C)
+    img = img[..., [2, 1, 0]]   # swap channels
+    return img.contiguous().numpy()
